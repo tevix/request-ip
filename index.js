@@ -15,7 +15,7 @@
  * @param req
  * @returns {string} ip
  */
-function getClientIp(req) {
+function getClientIp(req, startLevel) {
 
     // the ipAddress we return
     var ipAddress;
@@ -25,13 +25,13 @@ function getClientIp(req) {
     var clientIp = req.headers['x-client-ip'];
     var forwardedForAlt = req.headers['x-forwarded-for'];
     var realIp = req.headers['x-real-ip'];
-    
+
     // more obsure ones below
     var clusterClientIp = req.headers['x-cluster-client-ip'];
     var forwardedAlt = req.headers['x-forwarded'];
     var forwardedFor = req.headers['forwarded-for'];
     var forwarded = req.headers['forwarded'];
-        
+
     // remote address check
     var reqConnectionRemoteAddress = req.connection ? req.connection.remoteAddress : null;
     var reqSocketRemoteAddress = req.socket ? req.socket.remoteAddress : null;
@@ -39,13 +39,13 @@ function getClientIp(req) {
     var reqInfoRemoteAddress = req.info ? req.info.remoteAddress : null;
 
     // x-client-ip
-    if (clientIp) {
+    if (clientIp && startLevel <= 1) {
         ipAddress = clientIp;
     }
 
     // x-forwarded-for
     // (typically when your node app is behind a load-balancer (eg. AWS ELB) or proxy)
-    else if (forwardedForAlt) {
+    else if (forwardedForAlt && startLevel <= 2) {
         // x-forwarded-for may return multiple IP addresses in the format: 
         // "client IP, proxy 1 IP, proxy 2 IP" 
         // Therefore, the right-most IP address is the IP address of the most recent proxy 
@@ -57,7 +57,7 @@ function getClientIp(req) {
 
     // x-real-ip 
     // (default nginx proxy/fcgi)
-    else if (realIp) {
+    else if (realIp && startLevel <= 3) {
         // alternative to x-forwarded-for, used by some proxies
         ipAddress = realIp;
     }
@@ -66,44 +66,45 @@ function getClientIp(req) {
     // (Rackspace LB and Riverbed's Stingray)
     // http://www.rackspace.com/knowledge_center/article/controlling-access-to-linux-cloud-sites-based-on-the-client-ip-address
     // https://splash.riverbed.com/docs/DOC-1926
-    else if (clusterClientIp) {
+    else if (clusterClientIp && startLevel <= 4) {
         ipAddress = clusterClientIp;
     }
 
     // x-forwarded
-    else if (forwardedAlt) {
+    else if (forwardedAlt && startLevel <= 5) {
         ipAddress = forwardedAlt;
     }
 
     // forwarded-for
-    else if (forwardedFor) {
+    else if (forwardedFor && startLevel <= 5) {
         ipAddress = forwardedFor;
     }
 
     // forwarded
-    else if (forwarded) {
+    else if (forwarded && startLevel <= 5) {
         ipAddress = forwarded;
     }
 
     // remote address checks
-    else if (reqConnectionRemoteAddress) {
+    else if (reqConnectionRemoteAddress && startLevel <= 6) {
         ipAddress = reqConnectionRemoteAddress;
     }
-    else if (reqSocketRemoteAddress) {
+    else if (reqSocketRemoteAddress && startLevel <= 7) {
         ipAddress = reqSocketRemoteAddress
     }
-    else if (reqConnectionSocketRemoteAddress) {
+    else if (reqConnectionSocketRemoteAddress && startLevel <= 8) {
         ipAddress = reqConnectionSocketRemoteAddress
     }
-    else if (reqInfoRemoteAddress) {
+    else if (reqInfoRemoteAddress && startLevel <= 9) {
         ipAddress = reqInfoRemoteAddress
-    } 
+    }
 
     // return null if we cannot find an address
     else {
         ipAddress = null;
     }
-    
+
+    console.log(ipAddress);
     return ipAddress;
 }
 
@@ -115,14 +116,16 @@ exports.getClientIp = getClientIp;
 
 /**
  * Expose a default implemtation for a connect middleware
- * 
+ *
  * @options.attributeName - name of attribute to augment request object with
+ * @options.initialLevel - number of the level to start checking (based on how it works section of the documentation)
  */
-exports.mw = function(options) {
+exports.mw = function (options) {
     if (!options) options = {};
     var attr = options.attributeName || "clientIp";
-    return function(req, res, next) {
-        req[attr] = getClientIp(req);
+    var startLevel = options.startLevel || 1;
+    return function (req, res, next) {
+        req[attr] = getClientIp(req, startLevel);
         next();
     }
 };
